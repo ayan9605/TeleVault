@@ -4,7 +4,6 @@ const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { CustomFile } = require('telegram/client/uploads');
 const { v2: webdav } = require('webdav-server');
-const http = express = require('express');
 
 // --- Environment & Config ---
 const PORT = process.env.PORT || 8080;
@@ -202,7 +201,7 @@ class TelegramFileSystem extends webdav.FileSystem {
                                 caption: `file:${name} | chunk:${i}`
                             });
 
-                            telegramChunks.push({
+                        telegramChunks.push({
                                 chunk_index: telegramChunks.length,
                                 message_id: sentMsg.id,
                                 size: slice.length
