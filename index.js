@@ -307,8 +307,10 @@ async function main() {
         next();
     });
 
-    // Route all WebDAV requests using the official express middleware
-    app.use(webdavServer.express());
+    // Route all WebDAV requests through webdav-server's request execution engine
+    app.use((req, res) => {
+        webdavServer.executeRequest(req, res);
+    });
 
     app.listen(PORT, () => {
         console.log(`WebDAV proxy server running on port ${PORT}`);
