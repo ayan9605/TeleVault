@@ -30,7 +30,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _type(path, ctx, callback) {
         try {
-            const cleanPath = path.toString();
+            const cleanPath = path.toString(path);
             console.log(`[WebDAV] _type requested for path: "${cleanPath}"`);
             if (cleanPath === '/' || cleanPath === '') {
                 return callback(null, webdav.ResourceType.DIRECTORY);
@@ -50,12 +50,20 @@ class TelegramFileSystem extends webdav.FileSystem {
     }
 
     async _exists(path, ctx, callback) {
+        const cleanPath = path.toString(path);
+        if (cleanPath === '/' || cleanPath === '') {
+            return callback(null, true);
+        }
         this._type(path, ctx, (err, type) => {
             callback(null, !err && type !== undefined);
         });
     }
 
     async _fastExistCheck(ctx, path, callback) {
+        const cleanPath = path.toString(path);
+        if (cleanPath === '/' || cleanPath === '') {
+            return callback(true);
+        }
         this._exists(path, ctx, (err, exists) => {
             callback(exists);
         });
@@ -63,7 +71,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _stat(path, ctx, callback) {
         try {
-            const cleanPath = path.toString();
+            const cleanPath = path.toString(path);
             console.log(`[WebDAV] _stat requested for path: "${cleanPath}"`);
             if (cleanPath === '/' || cleanPath === '') {
                 return callback(null, {
@@ -108,7 +116,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _readDir(path, ctx, callback) {
         try {
-            const cleanPath = path.toString() === '' ? '/' : path.toString();
+            const cleanPath = path.toString(path) === '' ? '/' : path.toString(path);
             console.log(`[WebDAV] _readDir requested for path: "${cleanPath}"`);
             const items = await nodesCol.find({ parent_path: cleanPath }).toArray();
             const filenames = items.map(item => item.name);
@@ -120,7 +128,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _createFolder(path, ctx, callback) {
         try {
-            const cleanPath = path.toString();
+            const cleanPath = path.toString(path);
             console.log(`[WebDAV] _createFolder requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
@@ -147,7 +155,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _openReadStream(path, ctx, callback) {
         try {
-            const cleanPath = path.toString();
+            const cleanPath = path.toString(path);
             console.log(`[WebDAV] _openReadStream requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
@@ -181,7 +189,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _openWriteStream(path, ctx, callback) {
         try {
-            const cleanPath = path.toString();
+            const cleanPath = path.toString(path);
             console.log(`[WebDAV] _openWriteStream requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
@@ -247,7 +255,7 @@ class TelegramFileSystem extends webdav.FileSystem {
 
     async _delete(path, ctx, callback) {
         try {
-            const cleanPath = path.toString();
+            const cleanPath = path.toString(path);
             console.log(`[WebDAV] _delete requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
