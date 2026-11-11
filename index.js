@@ -31,6 +31,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _type(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
+            console.log(`[WebDAV] _type requested for path: "${cleanPath}"`);
             if (cleanPath === '/' || cleanPath === '') {
                 return callback(null, webdav.ResourceType.DIRECTORY);
             }
@@ -43,6 +44,7 @@ class TelegramFileSystem extends webdav.FileSystem {
             const type = node.is_folder ? webdav.ResourceType.DIRECTORY : webdav.ResourceType.FILE;
             callback(null, type);
         } catch (err) {
+            console.error("[WebDAV] _type error:", err);
             callback(err);
         }
     }
@@ -62,6 +64,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _stat(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
+            console.log(`[WebDAV] _stat requested for path: "${cleanPath}"`);
             if (cleanPath === '/' || cleanPath === '') {
                 return callback(null, {
                     size: 0,
@@ -106,6 +109,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _readDir(path, ctx, callback) {
         try {
             const cleanPath = path.toString() === '' ? '/' : path.toString();
+            console.log(`[WebDAV] _readDir requested for path: "${cleanPath}"`);
             const items = await nodesCol.find({ parent_path: cleanPath }).toArray();
             const filenames = items.map(item => item.name);
             callback(null, filenames);
@@ -117,6 +121,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _createFolder(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
+            console.log(`[WebDAV] _createFolder requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
 
@@ -143,6 +148,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _openReadStream(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
+            console.log(`[WebDAV] _openReadStream requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
 
@@ -176,6 +182,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _openWriteStream(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
+            console.log(`[WebDAV] _openWriteStream requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
 
@@ -241,6 +248,7 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _delete(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
+            console.log(`[WebDAV] _delete requested for path: "${cleanPath}"`);
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
 
@@ -273,7 +281,24 @@ async function main() {
         rootFileSystem: new TelegramFileSystem()
     });
 
-    // Route all traffic to the WebDAV server engine
+    // Dedicated Health Check Endpoint (handles browser /health pings cleanly)
+    app.get('/health', (req, res) => {
+        res.status(200).json({
+            status: 'online',
+            service: 'Telegram WebDAV Bridge',
+            database: db ? 'connected' : 'disconnected',
+            telegram: client.connected ? 'connected' : 'disconnected',
+            timestamp: new Date().toISOString()
+        });
+    });
+
+    // Express middleware to log incoming raw HTTP requests
+    app.use((req, res, next) => {
+        console.log(`[HTTP] ${req.method} request received for URL: ${req.url}`);
+        next();
+    });
+
+    // Route all other traffic to the WebDAV server engine explicitly at root
     app.use((req, res) => {
         webdavServer.executeRequest(req, res);
     });
