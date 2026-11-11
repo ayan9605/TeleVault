@@ -4,6 +4,7 @@ const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { CustomFile } = require('telegram/client/uploads');
 const { v2: webdav } = require('webdav-server');
+const http = express = require('express');
 
 // --- Environment & Config ---
 const PORT = process.env.PORT || 8080;
@@ -27,14 +28,12 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _lock(path, ctx, callback) { callback(null, true); }
     async _unlock(path, ctx, callback) { callback(null); }
 
-    // Required by webdav-server base class to avoid type errors
     async _type(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
             if (cleanPath === '/' || cleanPath === '') {
                 return callback(null, webdav.ResourceType.DIRECTORY);
             }
-
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
 
@@ -54,14 +53,12 @@ class TelegramFileSystem extends webdav.FileSystem {
         });
     }
 
-    // Check if node exists (fast check override)
     async _fastExistCheck(ctx, path, callback) {
         this._exists(path, ctx, (err, exists) => {
             callback(exists);
         });
     }
 
-    // Get stats for a file or folder
     async _stat(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
@@ -106,7 +103,6 @@ class TelegramFileSystem extends webdav.FileSystem {
         }
     }
 
-    // Read directory contents (List files/folders)
     async _readDir(path, ctx, callback) {
         try {
             const cleanPath = path.toString() === '' ? '/' : path.toString();
@@ -118,7 +114,6 @@ class TelegramFileSystem extends webdav.FileSystem {
         }
     }
 
-    // Create a new folder
     async _createFolder(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
@@ -145,7 +140,6 @@ class TelegramFileSystem extends webdav.FileSystem {
         }
     }
 
-    // Read a file (Stream from Telegram chunks)
     async _openReadStream(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
@@ -155,7 +149,6 @@ class TelegramFileSystem extends webdav.FileSystem {
             const node = await nodesCol.findOne({ parent_path: parentPath, name: name });
             if (!node || node.is_folder) return callback(webdav.Errors.ResourceNotFound);
 
-            // Create a PassThrough stream to pipe chunks sequentially to Windows
             const { PassThrough } = require('stream');
             const passThroughStream = new PassThrough();
 
@@ -180,7 +173,6 @@ class TelegramFileSystem extends webdav.FileSystem {
         }
     }
 
-    // Write a file (Upload chunks to Telegram & save metadata to MongoDB)
     async _openWriteStream(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
@@ -198,7 +190,7 @@ class TelegramFileSystem extends webdav.FileSystem {
                 final: async (next) => {
                     try {
                         const fullBuffer = Buffer.concat(chunksBuffer);
-                        const chunkSize = 1.5 * 1024 * 1024; // 1.5 MB safe chunk size for Telegram
+                        const chunkSize = 1.5 * 1024 * 1024;
                         const telegramChunks = [];
 
                         for (let i = 0; i < fullBuffer.length; i += chunkSize) {
@@ -217,7 +209,6 @@ class TelegramFileSystem extends webdav.FileSystem {
                             });
                         }
 
-                        // Save file metadata to MongoDB Atlas
                         await nodesCol.updateOne(
                             { parent_path: parentPath, name: name },
                             {
@@ -247,7 +238,6 @@ class TelegramFileSystem extends webdav.FileSystem {
         }
     }
 
-    // Delete a file or folder
     async _delete(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
@@ -271,19 +261,24 @@ async function main() {
     nodesCol = db.collection('nodes');
     console.log("Connected to MongoDB Atlas.");
 
-    // 2. Connect Telegram Client
+    // 2. Connect Telegram Client via Bot Token
     await client.start({
         botAuthToken: process.env.TELEGRAM_BOT_TOKEN
     });
-    console.log("Telegram MTProto Client connected.");
+    console.log("Telegram Bot Client connected.");
 
-    // 3. Start WebDAV Server with explicit root mapping
+    // 3. Start WebDAV Server bound to Render's dynamic PORT
     const server = new webdav.WebDAVServer({
         port: PORT,
         rootFileSystem: new TelegramFileSystem()
     });
 
     server.start(() => {
-        console.log(`WebDAV server started at http://127.0.0.1:${PORT}`);
+        console.log(`WebDAV server running on port ${PORT}`);
     });
 }
+
+main().catch((err) => {
+    console.error("Startup error:", err);
+    process.exit(1);
+});
