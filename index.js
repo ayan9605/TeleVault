@@ -23,7 +23,6 @@ const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRet
 class TelegramFileSystem extends webdav.FileSystem {
     constructor() {
         super();
-        // Initialize built-in managers to satisfy webdav-server v2 internal checks
         this.lockManager = new webdav.SimpleLockManager();
         this.propertyManager = new webdav.SimplePropertyManager();
     }
@@ -271,49 +270,36 @@ class TelegramFileSystem extends webdav.FileSystem {
     }
 }
 
-// --- Main Startup Sequence ---
-async function main() {
-    // 1. Connect MongoDB Atlas
-    const mongoClient = new MongoClient(MONGO_URI);
-    await mongoClient.connect();
-    db = mongoClient.db(DB_NAME);
-    nodesCol = db.collection('nodes');
-    console.log("Connected to MongoDB Atlas.");
-
-    // 2. Connect Telegram Client with FloodWait Handling
-    try {
-        await client.start({
-            botAuthToken: process.env.TELEGRAM_BOT_TOKEN
-        });
-        console.log("Telegram Bot Client connected.");
-    } catch (telegramErr) {
-        console.error("Telegram connection notice:", telegramErr.message || telegramErr);
-        if (telegramErr.seconds) {
-            console.log(`Telegram flood wait required. Pausing for ${telegramErr.seconds} seconds before continuing...`);
-            await new Promise(resolve => setTimeout(resolve, (telegramErr.seconds + 2) * 1000));
+// --- Robust Telegram Connection Helper ---
+async function connectTelegramWithRetry(maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
             await client.start({
                 botAuthToken: process.env.TELEGRAM_BOT_TOKEN
             });
-            console.log("Telegram Bot Client connected after flood wait retry.");
-        } else {
-            throw telegramErr;
+            console.log("Telegram Bot Client connected successfully.");
+            return;
+        } catch (err) {
+            console.error(`Telegram connection attempt ${attempt} failed:`, err.message || err);
+            if (err.seconds && attempt < maxRetries) {
+                const waitTime = (err.seconds + 5) * 1000;
+                console.log(`Flood wait triggered. Waiting ${err.seconds + 5} seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            } else if (attempt === maxRetries) {
+                throw err;
+            } else {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            }
         }
     }
+}
 
-    // 3. Setup Express + WebDAV Server integration
+// --- Main Startup Sequence ---
+async function main() {
+    // 1. Start HTTP Express Server instantly so Render health checks pass immediately
     const app = express();
     const webdavServer = new webdav.WebDAVServer();
 
-    // Explicitly mount TelegramFileSystem to root '/'
-    webdavServer.setFileSystem('/', new TelegramFileSystem(), (success) => {
-        if (!success) {
-            console.error("Failed to mount TelegramFileSystem at root '/'");
-        } else {
-            console.log("TelegramFileSystem successfully mounted at '/'");
-        }
-    });
-
-    // Dedicated Health Check Endpoint
     app.get('/health', (req, res) => {
         res.status(200).json({
             status: 'online',
@@ -324,7 +310,30 @@ async function main() {
         });
     });
 
-    // Request logger for WebDAV traffic
+    app.listen(PORT, () => {
+        console.log(`HTTP/Health server running on port ${PORT}`);
+    });
+
+    // 2. Connect MongoDB Atlas
+    const mongoClient = new MongoClient(MONGO_URI);
+    await mongoClient.connect();
+    db = mongoClient.db(DB_NAME);
+    nodesCol = db.collection('nodes');
+    console.log("Connected to MongoDB Atlas.");
+
+    // 3. Connect Telegram Client with automatic flood wait recovery
+    await connectTelegramWithRetry();
+
+    // 4. Mount TelegramFileSystem to root '/'
+    webdavServer.setFileSystem('/', new TelegramFileSystem(), (success) => {
+        if (!success) {
+            console.error("Failed to mount TelegramFileSystem at root '/'");
+        } else {
+            console.log("TelegramFileSystem successfully mounted at '/'");
+        }
+    });
+
+    // Request logger & WebDAV engine mapping
     app.use((req, res, next) => {
         if (req.path !== '/health') {
             console.log(`[HTTP] ${req.method} request received for URL: ${req.url}`);
@@ -332,13 +341,8 @@ async function main() {
         next();
     });
 
-    // Route all WebDAV requests through webdav-server's request execution engine
     app.use((req, res) => {
         webdavServer.executeRequest(req, res);
-    });
-
-    app.listen(PORT, () => {
-        console.log(`WebDAV proxy server running on port ${PORT}`);
     });
 }
 
