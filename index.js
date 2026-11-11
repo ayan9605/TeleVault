@@ -17,12 +17,15 @@ const stringSession = new StringSession(process.env.SESSION_STRING || "");
 const channelId = BigInt(process.env.TELEGRAM_CHANNEL_ID);
 
 let db, nodesCol;
-const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRetries: 5 });
+const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRetries: 10 });
 
 // --- Custom WebDAV File System mapped to MongoDB & Telegram ---
 class TelegramFileSystem extends webdav.FileSystem {
     constructor() {
         super();
+        // Initialize built-in managers to satisfy webdav-server v2 internal checks
+        this.lockManager = new webdav.SimpleLockManager();
+        this.propertyManager = new webdav.SimplePropertyManager();
     }
 
     async _lock(path, ctx, callback) { callback(null, true); }
@@ -277,11 +280,25 @@ async function main() {
     nodesCol = db.collection('nodes');
     console.log("Connected to MongoDB Atlas.");
 
-    // 2. Connect Telegram Client via Bot Token
-    await client.start({
-        botAuthToken: process.env.TELEGRAM_BOT_TOKEN
-    });
-    console.log("Telegram Bot Client connected.");
+    // 2. Connect Telegram Client with FloodWait Handling
+    try {
+        await client.start({
+            botAuthToken: process.env.TELEGRAM_BOT_TOKEN
+        });
+        console.log("Telegram Bot Client connected.");
+    } catch (telegramErr) {
+        console.error("Telegram connection notice:", telegramErr.message || telegramErr);
+        if (telegramErr.seconds) {
+            console.log(`Telegram flood wait required. Pausing for ${telegramErr.seconds} seconds before continuing...`);
+            await new Promise(resolve => setTimeout(resolve, (telegramErr.seconds + 2) * 1000));
+            await client.start({
+                botAuthToken: process.env.TELEGRAM_BOT_TOKEN
+            });
+            console.log("Telegram Bot Client connected after flood wait retry.");
+        } else {
+            throw telegramErr;
+        }
+    }
 
     // 3. Setup Express + WebDAV Server integration
     const app = express();
