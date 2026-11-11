@@ -277,7 +277,7 @@ async function main() {
     });
     console.log("Telegram MTProto Client connected.");
 
-    // 3. Start WebDAV Server
+    // 3. Start WebDAV Server with explicit root mapping
     const server = new webdav.WebDAVServer({
         port: PORT,
         rootFileSystem: new TelegramFileSystem()
@@ -285,8 +285,5 @@ async function main() {
 
     server.start(() => {
         console.log(`WebDAV server started at http://127.0.0.1:${PORT}`);
-        console.log(`Map network drive in Windows File Explorer using: http://127.0.0.1:${PORT}`);
     });
 }
-
-main().catch(console.error);
