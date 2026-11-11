@@ -306,10 +306,7 @@ async function connectTelegramWithRetry(maxRetries = 3) {
 // --- Main Startup Sequence ---
 async function main() {
     const app = express();
-    const webdavServer = new webdav.WebDAVServer({
-        // Disable built-in user/password challenge managers to prevent WinSCP 401/Digest loops
-        privilegeManager: new webdav.SimplePrivilegeManager()
-    });
+    const webdavServer = new webdav.WebDAVServer(); // Instantiated cleanly with defaults
 
     app.get('/health', (req, res) => {
         res.status(200).json({
