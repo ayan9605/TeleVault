@@ -1,7 +1,7 @@
 {
   "name": "telegram-drive-node",
   "version": "1.0.0",
-  "description": "Windows File Explorer to Telegram storage bridge via WebDAV and MongoDB Atlas",
+  "description": "Telegram storage bridge via WebDAV and MongoDB Atlas",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
