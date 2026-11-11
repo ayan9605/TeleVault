@@ -25,7 +25,6 @@ class TelegramFileSystem extends webdav.FileSystem {
         super();
     }
 
-    // Satisfy webdav-server v2 internal lock manager expectations
     _lockManager(path, callback) {
         callback(null, {
             getLocks: (cb) => cb(null, []),
@@ -120,6 +119,7 @@ class TelegramFileSystem extends webdav.FileSystem {
                 ctime: node.created_at || new Date()
             });
         } catch (err) {
+            console.error("[WebDAV] _stat error:", err);
             callback(err);
         }
     }
@@ -132,6 +132,7 @@ class TelegramFileSystem extends webdav.FileSystem {
             const filenames = items.map(item => item.name);
             callback(null, filenames);
         } catch (err) {
+            console.error("[WebDAV] _readDir error:", err);
             callback(err);
         }
     }
@@ -304,9 +305,11 @@ async function connectTelegramWithRetry(maxRetries = 3) {
 
 // --- Main Startup Sequence ---
 async function main() {
-    // 1. Start HTTP Express Server instantly so Render health checks pass immediately
     const app = express();
-    const webdavServer = new webdav.WebDAVServer();
+    const webdavServer = new webdav.WebDAVServer({
+        // Disable built-in user/password challenge managers to prevent WinSCP 401/Digest loops
+        privilegeManager: new webdav.SimplePrivilegeManager()
+    });
 
     app.get('/health', (req, res) => {
         res.status(200).json({
@@ -322,17 +325,14 @@ async function main() {
         console.log(`HTTP/Health server running on port ${PORT}`);
     });
 
-    // 2. Connect MongoDB Atlas
     const mongoClient = new MongoClient(MONGO_URI);
     await mongoClient.connect();
     db = mongoClient.db(DB_NAME);
     nodesCol = db.collection('nodes');
     console.log("Connected to MongoDB Atlas.");
 
-    // 3. Connect Telegram Client with automatic flood wait recovery
     await connectTelegramWithRetry();
 
-    // 4. Mount TelegramFileSystem to root '/'
     webdavServer.setFileSystem('/', new TelegramFileSystem(), (success) => {
         if (!success) {
             console.error("Failed to mount TelegramFileSystem at root '/'");
@@ -341,7 +341,6 @@ async function main() {
         }
     });
 
-    // Request logger & WebDAV engine mapping
     app.use((req, res, next) => {
         if (req.path !== '/health') {
             console.log(`[HTTP] ${req.method} request received for URL: ${req.url}`);
@@ -350,7 +349,14 @@ async function main() {
     });
 
     app.use((req, res) => {
-        webdavServer.executeRequest(req, res);
+        try {
+            webdavServer.executeRequest(req, res);
+        } catch (execErr) {
+            console.error("[WebDAV Execution Error]:", execErr);
+            if (!res.headersSent) {
+                res.status(500).send("Internal WebDAV Error");
+            }
+        }
     });
 }
 
