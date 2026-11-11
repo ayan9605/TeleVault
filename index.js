@@ -23,8 +23,16 @@ const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRet
 class TelegramFileSystem extends webdav.FileSystem {
     constructor() {
         super();
-        this.lockManager = new webdav.SimpleLockManager();
-        this.propertyManager = new webdav.SimplePropertyManager();
+    }
+
+    // Satisfy webdav-server v2 internal lock manager expectations
+    _lockManager(path, callback) {
+        callback(null, {
+            getLocks: (cb) => cb(null, []),
+            setLocks: (locks, cb) => cb(null),
+            addLock: (lock, cb) => cb(null),
+            removeLock: (lock, cb) => cb(null)
+        });
     }
 
     async _lock(path, ctx, callback) { callback(null, true); }
