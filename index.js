@@ -33,7 +33,7 @@ class TelegramFileSystem extends webdav.FileSystem {
             const cleanPath = path.toString(path);
             console.log(`[WebDAV] _type requested for path: "${cleanPath}"`);
             if (cleanPath === '/' || cleanPath === '') {
-                return callback(null, webdav.ResourceType.DIRECTORY);
+                return callback(null, new webdav.ResourceType(webdav.ResourceType.DIRECTORY));
             }
             const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
             const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
@@ -41,8 +41,8 @@ class TelegramFileSystem extends webdav.FileSystem {
             const node = await nodesCol.findOne({ parent_path: parentPath, name: name });
             if (!node) return callback(webdav.Errors.ResourceNotFound);
 
-            const type = node.is_folder ? webdav.ResourceType.DIRECTORY : webdav.ResourceType.FILE;
-            callback(null, type);
+            const resType = node.is_folder ? webdav.ResourceType.DIRECTORY : webdav.ResourceType.FILE;
+            callback(null, new webdav.ResourceType(resType));
         } catch (err) {
             console.error("[WebDAV] _type error:", err);
             callback(err);
