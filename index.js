@@ -27,13 +27,46 @@ class TelegramFileSystem extends webdav.FileSystem {
     async _lock(path, ctx, callback) { callback(null, true); }
     async _unlock(path, ctx, callback) { callback(null); }
 
-    // Check if node exists
+    // Required by webdav-server base class to avoid type errors
+    async _type(path, ctx, callback) {
+        try {
+            const cleanPath = path.toString();
+            if (cleanPath === '/' || cleanPath === '') {
+                return callback(null, webdav.ResourceType.DIRECTORY);
+            }
+
+            const parentPath = cleanPath.substring(0, cleanPath.lastIndexOf('/')) || '/';
+            const name = cleanPath.substring(cleanPath.lastIndexOf('/') + 1);
+
+            const node = await nodesCol.findOne({ parent_path: parentPath, name: name });
+            if (!node) return callback(webdav.Errors.ResourceNotFound);
+
+            const type = node.is_folder ? webdav.ResourceType.DIRECTORY : webdav.ResourceType.FILE;
+            callback(null, type);
+        } catch (err) {
+            callback(err);
+        }
+    }
+
+    async _exists(path, ctx, callback) {
+        this._type(path, ctx, (err, type) => {
+            callback(null, !err && type !== undefined);
+        });
+    }
+
+    // Check if node exists (fast check override)
+    async _fastExistCheck(ctx, path, callback) {
+        this._exists(path, ctx, (err, exists) => {
+            callback(exists);
+        });
+    }
+
+    // Get stats for a file or folder
     async _stat(path, ctx, callback) {
         try {
             const cleanPath = path.toString();
             if (cleanPath === '/' || cleanPath === '') {
                 return callback(null, {
-                    uid: webdav.uid(1),
                     size: 0,
                     isDirectory: () => true,
                     isFile: () => false,
@@ -202,7 +235,6 @@ class TelegramFileSystem extends webdav.FileSystem {
                         );
 
                         next();
-                        callback(null, writableStream);
                     } catch (uploadErr) {
                         next(uploadErr);
                     }
