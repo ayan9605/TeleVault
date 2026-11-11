@@ -4,6 +4,7 @@ const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const { CustomFile } = require('telegram/client/uploads');
 const { v2: webdav } = require('webdav-server');
+const express = require('express');
 
 // --- Environment & Config ---
 const PORT = process.env.PORT || 8080;
@@ -201,7 +202,7 @@ class TelegramFileSystem extends webdav.FileSystem {
                                 caption: `file:${name} | chunk:${i}`
                             });
 
-                        telegramChunks.push({
+                            telegramChunks.push({
                                 chunk_index: telegramChunks.length,
                                 message_id: sentMsg.id,
                                 size: slice.length
@@ -266,14 +267,19 @@ async function main() {
     });
     console.log("Telegram Bot Client connected.");
 
-    // 3. Start WebDAV Server bound to Render's dynamic PORT
-    const server = new webdav.WebDAVServer({
-        port: PORT,
+    // 3. Setup Express + WebDAV Server integration
+    const app = express();
+    const webdavServer = new webdav.WebDAVServer({
         rootFileSystem: new TelegramFileSystem()
     });
 
-    server.start(() => {
-        console.log(`WebDAV server running on port ${PORT}`);
+    // Route all traffic to the WebDAV server engine
+    app.use((req, res) => {
+        webdavServer.executeRequest(req, res);
+    });
+
+    app.listen(PORT, () => {
+        console.log(`WebDAV proxy server running on port ${PORT}`);
     });
 }
 
