@@ -277,11 +277,18 @@ async function main() {
 
     // 3. Setup Express + WebDAV Server integration
     const app = express();
-    const webdavServer = new webdav.WebDAVServer({
-        rootFileSystem: new TelegramFileSystem()
+    const webdavServer = new webdav.WebDAVServer();
+
+    // Explicitly mount TelegramFileSystem to root '/'
+    webdavServer.setFileSystem('/', new TelegramFileSystem(), (success) => {
+        if (!success) {
+            console.error("Failed to mount TelegramFileSystem at root '/'");
+        } else {
+            console.log("TelegramFileSystem successfully mounted at '/'");
+        }
     });
 
-    // Dedicated Health Check Endpoint (handles browser /health pings cleanly)
+    // Dedicated Health Check Endpoint
     app.get('/health', (req, res) => {
         res.status(200).json({
             status: 'online',
@@ -292,16 +299,16 @@ async function main() {
         });
     });
 
-    // Express middleware to log incoming raw HTTP requests
+    // Request logger for WebDAV traffic
     app.use((req, res, next) => {
-        console.log(`[HTTP] ${req.method} request received for URL: ${req.url}`);
+        if (req.path !== '/health') {
+            console.log(`[HTTP] ${req.method} request received for URL: ${req.url}`);
+        }
         next();
     });
 
-    // Route all other traffic to the WebDAV server engine explicitly at root
-    app.use((req, res) => {
-        webdavServer.executeRequest(req, res);
-    });
+    // Route all WebDAV requests using the official express middleware
+    app.use(webdavServer.express());
 
     app.listen(PORT, () => {
         console.log(`WebDAV proxy server running on port ${PORT}`);
